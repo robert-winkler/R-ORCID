@@ -1,7 +1,7 @@
 # R-ORCID
 Bibliographic analysis with R and ORCID
 
-This R markdown script runs in Rstudio (<https://rstudio.com>) and generates from an ORCID (https://orcid.org/inbox?lang=en) identifier of an author ('0000-0001-6732-1958'):
+This R markdown script runs in RStudio (<https://rstudio.com>) and generates from an ORCID (https://orcid.org/inbox?lang=en) identifier of an author ('0000-0001-6732-1958'):
 
 1. A wordcloud based on the most frequent title words:
 
