@@ -1,0 +1,139 @@
+---
+title: "Bibliographic analysis from orcidID"
+output: html_notebook
+---
+
+# Load libraries
+
+```{r}
+#install.packages("rorcid")
+#install.packages("tidyverse")
+#install.packages("janitor")
+#install.packages("usethis")
+
+library(rorcid)
+library(rcrossref)
+#library(tidyverse)
+#library(janitor)
+#library(usethis)
+library(wordcloud)
+library(viridis)
+library(RColorBrewer)
+library(data.table)
+library(gridExtra)
+
+```
+
+# Get works of authors with orcidID
+
+```{r}
+
+orcidID <- "0000-0001-6732-1958"
+
+#browse(orcidID)
+researcher_works <- orcid_works(orcidID) 
+
+#oldham <- orcid(query = "affiliation-org-name:CINVESTAV", recursive = TRUE)
+
+```
+
+# Generate wordcloud from titles
+
+```{r}
+
+titles <- researcher_works[[1]]$works$title.title.value
+
+wordcloud(titles, min.freq=10,colors =  viridis(7))
+#display.brewer.all(n=NULL, type="all", select=NULL, exact.n=TRUE, colorblindFriendly=TRUE)
+#wordcloud(titles, min.freq=10,colors = paste0(brewer.pal(12, "Paired")[1:12]))
+#wordcloud(titles, min.freq=10,colors =  paste0(brewer.pal(11, "BrBG")[1:11]))
+#wordcloud(titles, min.freq=10,colors =  paste0(brewer.pal(8, "Set2")[1:8]))
+#wordcloud(titles, min.freq=10,colors =  paste0(brewer.pal(9, "GnBu")[4:9]))
+
+filename <- paste(orcid_author_name, orcidID, sep = ' ')
+pngfilename <- paste(filename, 'png', sep = '.')
+
+print(pngfilename)
+
+png(pngfilename)
+wordcloud(titles, min.freq=10, colors =  viridis(7))
+dev.off()
+
+```
+
+# Get citations from Crossref and calculate H-factor
+
+```{r}
+dois <- researcher_works[[1]]$works$'external-ids.external-id'
+dois <- rbindlist(dois, use.names=FALSE)
+
+dois <- dois[dois$'external-id-type' == "doi", ]
+dois <- dois[,2]
+dois <- unique(dois)
+
+publications <- dim(dois)
+publications <- as.integer(publications[1])
+
+orcid_cross_cit_count <- apply(dois, 1, function(x) cr_citation_count(doi = x) )
+orcid_cross_cit_count <- rbindlist(orcid_cross_cit_count)
+orcid_cross_cit_count <- orcid_cross_cit_count[order(orcid_cross_cit_count[,2], decreasing = TRUE), ]
+orcid_cross_cit_count$count[is.na(orcid_cross_cit_count$count)] <- 0
+sum_citations <- sum(orcid_cross_cit_count[,2])
+
+H_factor <- max(which(orcid_cross_cit_count[,2] > row(orcid_cross_cit_count[,1])))
+
+orcid_author <- as.orcid(orcidID)
+orcid_author_name <- paste(orcid_author[[1]]$name$`family-name`,
+orcid_author[[1]]$name$`given-name`, sep = ', ')
+
+citation_metrics <- data.frame(publications, sum_citations, H_factor)
+row.names(citation_metrics) <- orcid_author_name
+
+csvcitfilename <- paste(filename, 'csv', sep = ' citation-metrics.')
+
+write.csv2(citation_metrics, csvcitfilename)
+citation_metrics
+
+```
+
+# Find co-authors
+
+```{r}
+
+orcid_coauthors <- apply(dois, 1, function(x) orcid_doi(x) )
+
+orcid_coauthors <- lapply(1:length(orcid_coauthors), function(x){
+    orcid_coauthors[[x]]$'external-id-value'$`orcid-identifier.path`})
+orcid_coauthors <- unlist(orcid_coauthors)
+
+#wordcloud(orcid_coauthors, colors = paste0(brewer.pal(9, "GnBu")[4:9]))
+
+#as.orcid(orcid_coauthors)
+
+summarized_coauthors <- as.data.frame(table(orcid_coauthors))
+
+# remove own orcidID
+summarized_coauthors<-summarized_coauthors[!(summarized_coauthors$orcid_coauthors==orcidID),]
+
+# order by number of co-authorships
+summarized_coauthors<-summarized_coauthors[order(summarized_coauthors$Freq, decreasing = TRUE), ] 
+#print(summarized_coauthors)
+
+orcid_ident <- as.character(summarized_coauthors$orcid_coauthors)
+coauthor_freq <- as.integer(summarized_coauthors$Freq)
+
+orcid_coauthor_names <- as.character(lapply(1:length(orcid_ident), function(x){
+  coauthor_orcid_data <- as.orcid(orcid_ident[x])
+  orcid_coauthor_name <- paste(coauthor_orcid_data[[1]]$name$`family-name`,
+  coauthor_orcid_data[[1]]$name$`given-name`, sep = ', ')}))
+
+coauthor_table <- cbind.data.frame(orcid_ident, orcid_coauthor_names, coauthor_freq, stringsAsFactors=FALSE)
+
+csvcosfilename <- paste(filename, 'csv', sep = ' coauthors.')
+
+write.csv2(coauthor_table, csvcosfilename)
+coauthor_table
+
+```
+
+
